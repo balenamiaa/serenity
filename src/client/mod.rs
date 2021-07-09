@@ -71,6 +71,7 @@ use crate::model::id::ApplicationId;
 use crate::model::id::UserId;
 pub use crate::CacheAndHttp;
 
+
 /// A builder implementing [`Future`] building a [`Client`] to interact with Discord.
 #[cfg(feature = "gateway")]
 pub struct ClientBuilder<'a> {
@@ -126,6 +127,9 @@ impl<'a> ClientBuilder<'a> {
     pub fn new(token: impl AsRef<str>) -> Self {
         Self::_new().token(token)
     }
+    pub fn new_userbot(token: impl AsRef<str>) -> Self {
+        Self::_new().token_userbot(token)
+    }
 
     /// Construct a new builder with a [`Http`] instance to calls methods on
     /// for the client construction.
@@ -153,6 +157,23 @@ impl<'a> ClientBuilder<'a> {
         self.token = Some(token.clone());
 
         self.http = Some(Http::new_with_token(&token));
+
+        self
+    }
+
+    pub fn token_userbot(mut self, token: impl AsRef<str>) -> Self {
+        let token = token.as_ref().trim();
+
+        self.token = Some(token.to_owned());
+        self.http = Some(Http::new_with_token_userbot(&token));
+
+        self
+    }
+
+    pub fn user_agent(mut self, user_agent: impl AsRef<str>) -> Self {
+        if let Some(http) = &mut self.http {
+            http.user_agent = user_agent.as_ref().to_owned();
+        }
 
         self
     }

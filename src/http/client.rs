@@ -67,6 +67,7 @@ pub struct HttpBuilder<'a> {
     ratelimiter: Option<Ratelimiter>,
     ratelimiter_disabled: Option<bool>,
     token: Option<String>,
+    user_agent: Option<String>,
     proxy: Option<Url>,
     fut: Option<BoxFuture<'a, Result<Http>>>,
     #[cfg(feature = "unstable_discord_api")]
@@ -84,6 +85,7 @@ impl<'a> HttpBuilder<'a> {
             fut: None,
             #[cfg(feature = "unstable_discord_api")]
             application_id: None,
+            user_agent: None
         }
     }
 
@@ -91,6 +93,9 @@ impl<'a> HttpBuilder<'a> {
     /// The `token` will automatically be prefixed "Bot " if not already.
     pub fn new(token: impl AsRef<str>) -> Self {
         Self::_new().token(token)
+    }
+    pub fn new_userbot(token: impl AsRef<str>) -> Self {
+        Self::_new().token_userbot(token)
     }
 
     /// Sets the application_id to use interactions.
@@ -110,6 +115,18 @@ impl<'a> HttpBuilder<'a> {
             if token.starts_with("Bot ") { token.to_string() } else { format!("Bot {}", token) };
 
         self.token = Some(token);
+
+        self
+    }
+
+    pub fn token_userbot(mut self, token: impl AsRef<str>) -> Self {
+        self.token = Some(token.as_ref().trim().to_owned());
+
+        self
+    }
+
+    pub fn user_agent(mut self, user_agent: impl AsRef<str>) -> Self {
+        self.user_agent = Some(user_agent.as_ref().to_owned());
 
         self
     }
@@ -195,6 +212,8 @@ impl<'a> Future for HttpBuilder<'a> {
             let ratelimiter_disabled = self.ratelimiter_disabled.take().unwrap();
             let proxy = self.proxy.take();
 
+            let _user_agent = self.user_agent.clone();
+
             self.fut = Some(Box::pin(async move {
                 Ok(Http {
                     client,
@@ -204,6 +223,10 @@ impl<'a> Future for HttpBuilder<'a> {
                     token,
                     #[cfg(feature = "unstable_discord_api")]
                     application_id,
+                    user_agent: match _user_agent {
+                        None => constants::USER_AGENT.to_owned(),
+                        Some(user_agent) => user_agent
+                    }
                 })
             }))
         }
@@ -223,6 +246,7 @@ pub struct Http {
     pub ratelimiter_disabled: bool,
     pub proxy: Option<Url>,
     pub token: String,
+    pub user_agent: String,
     #[cfg(feature = "unstable_discord_api")]
     pub application_id: u64,
 }
@@ -248,6 +272,7 @@ impl Http {
             ratelimiter_disabled: false,
             proxy: None,
             token: token.to_string(),
+            user_agent: constants::USER_AGENT.to_owned(),
             #[cfg(feature = "unstable_discord_api")]
             application_id: 0,
         }
@@ -279,9 +304,31 @@ impl Http {
         Self::new(Arc::new(built), &token)
     }
 
+    pub fn new_with_token_userbot(token: &str) -> Self {
+        let builder = configure_client_backend(Client::builder());
+        let built = builder.build().expect("Cannot build reqwest::Client");
+
+        Self::new(Arc::new(built), token)
+    }
+
+    pub fn user_agent(mut self, user_agent: impl AsRef<str>) -> Self {
+        self.user_agent = user_agent.as_ref().to_owned();
+
+        self
+    }
+
     #[cfg(feature = "unstable_discord_api")]
     pub fn new_with_token_application_id(token: &str, application_id: u64) -> Self {
         let mut base = Self::new_with_token(token);
+
+        base.application_id = application_id;
+
+        base
+    }
+
+    #[cfg(feature = "unstable_discord_api")]
+    pub fn new_with_token_application_id_userbot(token: &str, application_id: u64) -> Self {
+        let mut base = Self::new_with_token_userbot(token);
 
         base.application_id = application_id;
 
@@ -3059,7 +3106,7 @@ impl Http {
             .client
             .post(url)
             .header(AUTHORIZATION, HeaderValue::from_str(&self.token)?)
-            .header(USER_AGENT, HeaderValue::from_static(constants::USER_AGENT))
+            .header(USER_AGENT, HeaderValue::from_str(&self.user_agent)?)
             .multipart(multipart)
             .send()
             .await?;
@@ -3405,6 +3452,7 @@ impl Default for Http {
             ratelimiter_disabled: false,
             proxy: None,
             token: "".to_string(),
+            user_agent: constants::USER_AGENT.to_owned(),
             #[cfg(feature = "unstable_discord_api")]
             application_id: 0,
         }
